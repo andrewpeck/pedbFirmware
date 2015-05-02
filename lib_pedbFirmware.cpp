@@ -1,25 +1,53 @@
-#include "PEDBfirmwareV5.hpp"
+#include "lib_pedbFirmware.h"
+#include "pedbFirmware_constants.h"
+
+#include <SPI.h>
+#include <Ethernet.h>
+
+/*default ip address, only used if DHCP fails */
+IPAddress ip (10,90,90,5);
+
+/* Initialize the Ethernet server library */
+EthernetServer server(80);
+
+EthernetClient client;
+
+int psline[18];
+int chipSelectPin[4];
+
+#define DEBUG 1
+// to put in debug mode
+//#define DEBUG 0
+//// to turn off debug mode
 
 #define debug_println(text) \
         do { if (DEBUG) Serial.println(text); } while (0)
 #define debug_print(text) \
         do { if (DEBUG) Serial.print(text); } while (0)
 
-void executeCommand (int cmd, int channel, int chip)
+void executeCommand (uint8_t cmd, uint16_t data)
 {
-    switch (cmd):
+    switch (cmd)
     {
         case CMD_READ_VOLTAGE:
-            readVoltage(chip, channel);
-            break;
+            {
+                int chip    = (0xFF & data) << 8;
+                int channel = (0xFF & data);
+                client.print(readValue(chip, channel));
+                break;
+            }
         case CMD_POWER_ON:
-            break;
+            {
+                int channel = data;
+                powerOn (channel);
+                break;
+            }
         case CMD_POWER_OFF:
-            powerOff (channel);
-            break;
-        case CMD_READ_CURRENT:
-            readCurrent(.....);
-            break;
+            {
+                int channel = data;
+                powerOff (channel);
+                break;
+            }
         case CMD_CHECK_DOOR:
             checkDoor();
             break;
@@ -134,10 +162,10 @@ void startEthernet ()
 {
     /* start the Ethernet connection and the server: */
     /*remove if using DHCP below */
-    if (isPrimary)
-        Ethernet.begin(macPri, ip);
-    else
-        Ethernet.begin(macSec, ip);
+    //if (isPrimary)
+    //    Ethernet.begin(macPri, ip);
+    //else
+    //    Ethernet.begin(macSec, ip);
     /* start the Ethernet connection: **************Edit for primary/secondary************ */
     for (int j=0;j<10;j++){
         if (Ethernet.begin(mac)) {
@@ -151,13 +179,7 @@ void startEthernet ()
 void readVoltage(int chip, int channel)
 {
     int adc_value = readValue(chip, channel);
-    client.print(...);
-}
-
-void readCurrent(......)
-{
-    debug_print("current read command seen from curl");
-    debug_print('\n');
+    client.print(adc_value);
 }
 
 void checkDoor()
@@ -194,19 +216,16 @@ void resetADC ()
 
 void powerOn (int channel)
 {
-    debug_print('power on command received from curl: ');
-    debug_print(cmdCandidate);
-    debug_print('\n');
-    digitalWrite(psline[i], LOW);    /* set power supply line LOW (enable) */
+    debug_print("power on command received from curl: \n");
+    digitalWrite(psline[channel], LOW);    /* set power supply line LOW (enable) */
 }
 
 void powerOff (int channel)
 {
     debug_print('power off command received from curl: ');
-    debug_print(cmdCandidate);
     debug_print('\n');
 
-    digitalWrite(psline[i], HIGH);    /* set power supply line HIGH (disable) */
+    digitalWrite(psline[channel], HIGH);    /* set power supply line HIGH (disable) */
 }
 
 int readValue(int chipNum,int adcNum)
@@ -216,7 +235,6 @@ int readValue(int chipNum,int adcNum)
     uint8_t b0=0;
     uint8_t b1=0;
     uint8_t b2=0;
-
 
     /* take the chip select low to select the device: */
     digitalWrite(chipSelectPin[chipNum], LOW);
@@ -236,6 +254,7 @@ int readValue(int chipNum,int adcNum)
 
     result |= b1 << 8;/*shift b1 left one byte */
     result |= b2;
+    result = result | b2;
     /*debug_print("NEXT\n"); */
     /* take the chip select high to de-select: */
     digitalWrite(chipSelectPin[chipNum], HIGH);
@@ -257,9 +276,9 @@ void writeRegister(int chipNum, uint8_t thisRegister)
     digitalWrite(chipSelectPin[chipNum], HIGH);
 }
 
-string readURL()
+String readURL()
 {
-    string readString;
+    String readString;
     while (client.connected() && client.available()) {
         char c = client.read();
         /* read char by char HTTP request */
@@ -277,27 +296,26 @@ string readURL()
     }
 }
 
-void parseUrlAndExecuteCommand (string url)
+void parseUrlAndExecuteCommand (String url)
 {
+    int start=0;
     if (url.indexOf('?') > 0) {
         start = url.indexOf('?');
         debug_print("starting position of ? ");
         debug_println(start);
-        string cmd = url.substring(start+1,start+3);
     }
 
-    uint8_t cmd     = strtol (cmd.c_str()[0], NULL, 16);
-    uint8_t channel = strtol (cmd.c_str()[1], NULL, 16);
-    uint8_t chip    = strtol (cmd.c_str()[2], NULL, 16);
+    uint8_t  cmd   = strtol (url.substring(start+1,start+1).c_str(),  NULL, 16);
+    uint16_t data  = strtol (url.substring(start+2, start+3).c_str(), NULL, 16);
 
-    executeCommand (cmd, channel, chip);
+    executeCommand (cmd, data);
 }
 
 
 void openClient()
 {
     /* listen for incoming clients */
-    EthernetClient client = server.available();
+    client = server.available();
     if (!client) {
         debug_print("error: ...");
         return;

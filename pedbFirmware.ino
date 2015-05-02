@@ -1,14 +1,7 @@
+#include "lib_pedbFirmware.h"
 #include <SPI.h>
 #include <Ethernet.h>
-#include <stdio.h>
-
-#include "PEDBfirmwareV5.hpp"
-
-/*default ip address, only used if DHCP fails */
-IPAddress ip (10,90,90,5);
-
-/* Initialize the Ethernet server library */
-EthernetServer server(80);
+#include <String.h>
 
 void setup()
 {
@@ -27,7 +20,6 @@ void setup()
 void loop()
 {
     openClient();
-    parseUrlAndExecuteCommand (readURL())
-    readAndParseURL();
+    parseUrlAndExecuteCommand (readURL()); 
     closeClient();
 }
