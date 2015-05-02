@@ -15,10 +15,8 @@ EthernetClient client;
 int psline[18];
 int chipSelectPin[4];
 
+/* define 1 to put in DEBUG mode, 0 to turn off DEBUG mode.. */
 #define DEBUG 1
-// to put in debug mode
-//#define DEBUG 0
-//// to turn off debug mode
 
 #define debug_println(text) \
         do { if (DEBUG) Serial.println(text); } while (0)
@@ -29,11 +27,16 @@ void executeCommand (uint8_t cmd, uint16_t data)
 {
     switch (cmd)
     {
-        case CMD_READ_VOLTAGE:
+        case CMD_READ_ADC:
             {
                 int chip    = (0xFF & data) << 8;
                 int channel = (0xFF & data);
                 client.print(readValue(chip, channel));
+                break;
+            }
+        case CMD_CHECK_DOOR:
+            {
+                client.print(checkDoor());
                 break;
             }
         case CMD_POWER_ON:
@@ -48,18 +51,19 @@ void executeCommand (uint8_t cmd, uint16_t data)
                 powerOff (channel);
                 break;
             }
-        case CMD_CHECK_DOOR:
-            checkDoor();
-            break;
         case CMD_RESET:
-            resetADC();
-            break;
+            {
+                resetAllADCs();
+                break;
+            }
         default:
-            break;
+            {
+                break;
+            }
     }
 }
 
-void closeClient()
+void closeEthernetClient()
 {
     /* give the web browser time to receive the data */
     delay(1);
@@ -69,18 +73,17 @@ void closeClient()
     debug_println("client disconnected");
 }
 
-void startServer()
+void startEthernetServer()
 {
     /*start the web server */
     server.begin();
 
-    debug_print("server is at ");
-    debug_println(Ethernet.localIP());
+    debug_println("server is at %i", Ethernet.localIP());
 
     if (isPrimary)
-        debug_print("primary box selected");
+        debug_println("primary box selected");
     else
-        debug_print("secondary box selected");
+        debug_println("secondary box selected");
 }
 
 void configurePowerSupplyLines ()
@@ -171,97 +174,82 @@ void startEthernet ()
         if (Ethernet.begin(mac)) {
             break;
         }
-        debug_println("Waiting for DHCP assigned address");
+        debug_println("Waiting for DHCP assigned address\n");
         delay(5000);
     }
 }
 
-void readVoltage(int chip, int channel)
-{
-    int adc_value = readValue(chip, channel);
-    client.print(adc_value);
-}
-
 void checkDoor()
 {
-    debug_print("box door check command BSread seen from curl");
-    debug_print('\n');
-    client.print("\n");  /*there is no logical reason for this to be here, but this will not work without it */
-    if(digitalRead(doorStatePin)){
-        client.print("1");
-    }
-    else{
-        client.print("0");
-    }
-    client.print("\n");
+    /* Debug */
+    debug_println("box door check command BSread seen from curl");
+
+    return (digitalRead(doorStatePin));
 }
 
-void resetADC ()
+void resetAllADCs ()
 {
-    client.print("\n");  /*there is no logical reason for this to be here, but this will not work without it */
     /*write the setup byte */
-    writeRegister(0,setupB);
-    writeRegister(1,setupB);
-    writeRegister(2,setupB);
-    writeRegister(3,setupB);
-    /* give the sensors time to set up: */
-    delay(100);
-    writeRegister(0,resetB);/*reset the FIFO only of the ADC */
-    writeRegister(1,resetB);
-    writeRegister(2,resetB);
-    writeRegister(3,resetB);
-    debug_print("ADC reset command resetA seen from curl");
-    debug_print('\n');
+    for (int i=0; i<4; i++) {
+        writeRegister(i,setupB);
+        delay(100);
+        writeRegister(0,resetB);
+    }
+
+    /* Debug */
+    debug_println("ADC reset command resetA seen from curl");
 }
 
 void powerOn (int channel)
 {
-    debug_print("power on command received from curl: \n");
-    digitalWrite(psline[channel], LOW);    /* set power supply line LOW (enable) */
+    /* Debug */
+    debug_println("power on command received from curl:");
+
+    /* set power supply line LOW (enable) */
+    digitalWrite(psline[channel], LOW);
 }
 
 void powerOff (int channel)
 {
-    debug_print('power off command received from curl: ');
-    debug_print('\n');
+    /* Debug */
+    debug_println("power off command received from curl: ");
 
-    digitalWrite(psline[channel], HIGH);    /* set power supply line HIGH (disable) */
+    /* set power supply line High (disable) */
+    digitalWrite(psline[channel], HIGH);
 }
 
-int readValue(int chipNum,int adcNum)
+uint16_t readValue(int chip, int channel)
 {
-    /*value to return */
-    int result=0;
-    uint8_t b0=0;
-    uint8_t b1=0;
-    uint8_t b2=0;
-
     /* take the chip select low to select the device: */
-    digitalWrite(chipSelectPin[chipNum], LOW);
+    digitalWrite(chipSelectPin[chip], LOW);
 
     /*add convert one channel opetation to the adc number to produce scan command */
-    b0 = SPI.transfer(scanOneChan+adcAddress[adcNum]);
-    b1 = SPI.transfer(0x00);
-    b2 = SPI.transfer(0x00);
-    /*debug_print("chipNum ="); */
-    /*debug_print(chipNum, DEC); */
-    /*debug_print("    "); */
-    /*debug_print(b0,BIN); */
-    /*debug_print("    "); */
-    /*debug_print(b1,BIN); */
-    /*debug_print("    "); */
-    /*debug_print(b2,BIN); */
+    uint8_t b0 = SPI.transfer(scanOneChan+adcAddress[adcNum]);
+    uint8_t b1 = SPI.transfer(0x00);
+    uint8_t b2 = SPI.transfer(0x00);
+    /*debug_println("chip ="); */
+    /*debug_println(chip, DEC); */
+    /*debug_println("    "); */
+    /*debug_println(b0,BIN); */
+    /*debug_println("    "); */
+    /*debug_println(b1,BIN); */
+    /*debug_println("    "); */
+    /*debug_println(b2,BIN); */
 
-    result |= b1 << 8;/*shift b1 left one byte */
-    result |= b2;
-    result = result | b2;
-    /*debug_print("NEXT\n"); */
+    uint16_t result |= b1 << 8;
+             result |= b2;
+
     /* take the chip select high to de-select: */
-    digitalWrite(chipSelectPin[chipNum], HIGH);
+    digitalWrite(chipSelectPin[chip], HIGH);
 
-    writeRegister(chipNum,resetB);/*reset the FIFO only of the ADC */
+    resetADCFIFO(chip);
 
     return(result);
+}
+
+void resetADCFIFO (int chip)
+{
+    writeRegister(chip,resetB);/*reset the FIFO only of the ADC */
 }
 
 void writeRegister(int chipNum, uint8_t thisRegister)
@@ -301,23 +289,29 @@ void parseUrlAndExecuteCommand (String url)
     int start=0;
     if (url.indexOf('?') > 0) {
         start = url.indexOf('?');
-        debug_print("starting position of ? ");
-        debug_println(start);
+        debug_println("starting position of %i", start);
     }
 
-    uint8_t  cmd   = strtol (url.substring(start+1,start+1).c_str(),  NULL, 16);
-    uint16_t data  = strtol (url.substring(start+2, start+3).c_str(), NULL, 16);
+    int length = url.length();
+
+    uint8_t cmd = 0xF;
+    uint16_t data = 0x16;
+
+    if (length>=start+1)
+        cmd   = strtol (url.substring(start+1,start+1).c_str(),  NULL, 16);
+    if (length>=start+3)
+        data  = strtol (url.substring(start+2, start+3).c_str(), NULL, 16);
 
     executeCommand (cmd, data);
 }
 
 
-void openClient()
+void openEthernetClient()
 {
     /* listen for incoming clients */
     client = server.available();
     if (!client) {
-        debug_print("error: ...");
+        debug_println("error: ...");
         return;
     }
     debug_println("new client");

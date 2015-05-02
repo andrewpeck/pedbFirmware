@@ -1,9 +1,8 @@
 #ifndef PEDB_FIRMWARE_CONSTANTS_H
 #define PEDB_FIRMWARE_CONSTANTS_H
 
-//*************************************************************************************************************
-#define ISPRIMARY /*set this if the is being compiled for the primary box. comment out if secondary is needed */
-//**************************************************************************************************************
+/*set this if the is being compiled for the primary box. comment out if secondary is needed */
+#define ISPRIMARY
 
 #ifdef ISPRIMARY
     static const int isPrimary = 1;
@@ -53,10 +52,10 @@ int chipSelectPinSec[4] = {33,35,29,31};/*secondary box, first two are ADCs on J
 
 /* addresses for the ADC channels */
 const uint8_t adcAddress[16] = {
-    0x0, // B00000000,
-    B00001000,
-    B00010000,
-    B00011000,
+    B00000000, //0x0
+    B00001000, //0x8
+    B00010000, //0x1F
+    B00011000, //0x18
     B00100000,
     B00101000,
     B00110000,
